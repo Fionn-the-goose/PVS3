@@ -61,10 +61,18 @@ void free_mat(float** A, int num_rows) {
 
 int main(int argc, char* argv[])
 {
+	int nodeID, numNodes;
+
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &numNodes);
+	MPI_Comm_rank(MPI_COMM_WORLD, &nodeID);
+	MPI_Status status;
+
 	float** A, ** B, ** C;	// matrices
 	int d1, d2, d3;         // dimensions of matrices
 	int i, j, k;			// loop variables
 
+	//serial stuff
 	/* print user instruction */
 	if (argc != 4)
 	{
@@ -87,7 +95,54 @@ int main(int argc, char* argv[])
 	init_mat(B, d2, d3);
 	C = alloc_mat(d1, d3);	// no initialisation of C, because it gets filled by matmult
 
+	//parallel send / receive version
+	float* sendBufr;
+	float* recBufr;
+	if (0 == nodeID)
+	{
+		printf("Sending Matrix to other tasks\n\n");
+		for (int i = 1; i < numNodes; ++i)
+		{
+			sendBufr = C[d1 * (i - 1) / (numNodes - 1)];
+			MPI_Send(sendBufr, d1 / (numNodes - 1), MPI_FLOAT, i, 0, MPI_COMM_WORLD);
+			MPI_Recv(recBufr, 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &status);
+		}
+
+		printf("Receiving results from other tasks\n\n");
+		for (int i = 1; i < numNodes; ++i)
+		{
+			MPI_Recv(C[d1 * (i - 1) / (numNodes - 1)], d1 / (numNodes - 1), MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
+		}
+	}
+	else
+	{
+		std::chrono::milliseconds start, end;
+
+		start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+		MPI_Recv(sendBufr, d1 / (numNodes - 1), MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);
+		MPI_Send(recBufr, 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+
+		printf("Node %d: performing parallel matrix multiplication...\n", nodeID);
+		//for (i = d1 * nodeID / numNodes; i < (d1 * (nodeID + 1) / numNodes); i++)
+		for(i = 0; i < d1 / (numNodes - 1); ++i)
+		{
+			//printf("%d ", i);
+
+			/*for (j = 0; j < d3; j++)
+				for (k = 0; k < d2; k++)
+					tempArr[i][j] += A[i][k] * B[k][j];*/
+		}
+
+		MPI_Send(C[d1 * (nodeID - 1) / (numNodes - 1)], d1 / (numNodes - 1), MPI_FLOAT, 0, 1, MPI_COMM_WORLD);
+
+		end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+		printf("\nParallel Send / Receive Time Taken in Milliseconds: %lld\n\n\n", end.count() - start.count());
+	}
+
 	/* serial version of matmult */
+	if (0 == nodeID)
 	{
 		std::chrono::milliseconds start, end;
 
@@ -101,53 +156,23 @@ int main(int argc, char* argv[])
 
 		end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 
-		printf("\nTime Taken in Milliseconds: %lld\n", end.count() - start.count());
+		printf("\nTime Taken in Milliseconds: %lld\n\n\n", end.count() - start.count());
+
+		/* test output */
+		//print_mat(A, d1, d2, "A");
+		//print_mat(B, d2, d3, "B");
+		//print_mat(C, d1, d3, "C");
+
+		printf("\nDone.\n");
+
+		/* free dynamic memory */
+		free_mat(A, d1);
+		free_mat(B, d2);
+		free_mat(C, d1);
 	}
 
-	//parallel send / receive version
-	{
-		std::chrono::milliseconds start, end;
 
-		start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
-
-		int nodeID, numNodes;
-		//int send_offset, recv_offset;
-
-		MPI_Init(&argc, &argv);
-		MPI_Comm_size(MPI_COMM_WORLD, &numNodes);
-		MPI_Comm_rank(MPI_COMM_WORLD, &nodeID);
-		MPI_Status status;
-
-		printf("Perform parallel matrix multiplication...\n");
-		for (i = d1 * nodeID / numNodes; i < (d1 * (nodeID + 1) / numNodes); i++)
-		{
-			//printf("%d\n", i);
-			//MPI_Send(C[i], d1 / numNodes, MPI_FLOAT, (nodeID + 1) % numNodes, 0, MPI_COMM_WORLD);
-			//MPI_Recv(C[i], d1 / numNodes, MPI_FLOAT, (nodeID - 1 + numNodes) % numNodes, 0, MPI_COMM_WORLD, &status);
-
-			for (j = 0; j < d3; j++)
-				for (k = 0; k < d2; k++)
-					C[i][j] += A[i][k] * B[k][j];
-		}
-
-		MPI_Finalize();
-
-		end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
-
-		printf("\nTime Taken in Milliseconds: %lld\n", end.count() - start.count());
-	}
-
-	/* test output */
-	//print_mat(A, d1, d2, "A");
-	//print_mat(B, d2, d3, "B");
-	//print_mat(C, d1, d3, "C");
-
-	printf("\nDone.\n");
-
-	/* free dynamic memory */
-	free_mat(A, d1);
-	free_mat(B, d2);
-	free_mat(C, d1);
+	MPI_Finalize();
 
 	return 0;
 }
