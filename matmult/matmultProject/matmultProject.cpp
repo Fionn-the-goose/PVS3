@@ -96,18 +96,8 @@ int main(int argc, char* argv[])
 	C = alloc_mat(d1, d3);	// no initialisation of C, because it gets filled by matmult
 
 	//parallel send / receive version
-	float* sendBufr;
-	float* recBufr;
 	if (0 == nodeID)
 	{
-		printf("Sending Matrix to other tasks\n\n");
-		for (int i = 1; i < numNodes; ++i)
-		{
-			sendBufr = C[d1 * (i - 1) / (numNodes - 1)];
-			MPI_Send(sendBufr, d1 / (numNodes - 1), MPI_FLOAT, i, 0, MPI_COMM_WORLD);
-			MPI_Recv(recBufr, 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &status);
-		}
-
 		printf("Receiving results from other tasks\n\n");
 		for (int i = 1; i < numNodes; ++i)
 		{
@@ -120,18 +110,15 @@ int main(int argc, char* argv[])
 
 		start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 
-		MPI_Recv(sendBufr, d1 / (numNodes - 1), MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);
-		MPI_Send(recBufr, 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
-
 		printf("Node %d: performing parallel matrix multiplication...\n", nodeID);
 		//for (i = d1 * nodeID / numNodes; i < (d1 * (nodeID + 1) / numNodes); i++)
 		for(i = 0; i < d1 / (numNodes - 1); ++i)
 		{
 			//printf("%d ", i);
 
-			/*for (j = 0; j < d3; j++)
+			for (j = 0; j < d3; j++)
 				for (k = 0; k < d2; k++)
-					tempArr[i][j] += A[i][k] * B[k][j];*/
+					C[i][j] += A[i][k] * B[k][j];
 		}
 
 		MPI_Send(C[d1 * (nodeID - 1) / (numNodes - 1)], d1 / (numNodes - 1), MPI_FLOAT, 0, 1, MPI_COMM_WORLD);

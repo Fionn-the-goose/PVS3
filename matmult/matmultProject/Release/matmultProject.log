@@ -1,7 +1,5 @@
 ﻿  matmultProject.cpp
   Generating code
-F:\UniStuff\Sem3\PvS2\PVS3\matmult\matmultProject\matmultProject.cpp(108): warning C4700: uninitialized local variable 'recBufr' used
-F:\UniStuff\Sem3\PvS2\PVS3\matmult\matmultProject\matmultProject.cpp(123): warning C4700: uninitialized local variable 'sendBufr' used
   1 of 15 functions ( 6.7%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
     0 functions had inline decision re-evaluated but remain unchanged
