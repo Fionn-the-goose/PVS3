@@ -1,6 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <mpi.h>
+
+#include <chrono>
+
+//#define GET_TIME std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+
 // ---------------------------------------------------------------------------
 // allocate space for empty matrix A[row][col]
 // access to matrix elements possible with:
@@ -82,16 +88,59 @@ int main(int argc, char* argv[])
 	C = alloc_mat(d1, d3);	// no initialisation of C, because it gets filled by matmult
 
 	/* serial version of matmult */
-	printf("Perform matrix multiplication...\n");
-	for (i = 0; i < d1; i++)
-		for (j = 0; j < d3; j++)
-			for (k = 0; k < d2; k++)
-				C[i][j] += A[i][k] * B[k][j];
+	{
+		std::chrono::milliseconds start, end;
+
+		start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+		printf("Perform matrix multiplication...\n");
+		for (i = 0; i < d1; i++)
+			for (j = 0; j < d3; j++)
+				for (k = 0; k < d2; k++)
+					C[i][j] += A[i][k] * B[k][j];
+
+		end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+		printf("\nTime Taken in Milliseconds: %lld\n", end.count() - start.count());
+	}
+
+	//parallel send / receive version
+	{
+		std::chrono::milliseconds start, end;
+
+		start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+		int nodeID, numNodes;
+		//int send_offset, recv_offset;
+
+		MPI_Init(&argc, &argv);
+		MPI_Comm_size(MPI_COMM_WORLD, &numNodes);
+		MPI_Comm_rank(MPI_COMM_WORLD, &nodeID);
+		MPI_Status status;
+
+		printf("Perform parallel matrix multiplication...\n");
+		for (i = d1 * nodeID / numNodes; i < (d1 * (nodeID + 1) / numNodes); i++)
+		{
+			//printf("%d\n", i);
+			//MPI_Send(C[i], d1 / numNodes, MPI_FLOAT, (nodeID + 1) % numNodes, 0, MPI_COMM_WORLD);
+			//MPI_Recv(C[i], d1 / numNodes, MPI_FLOAT, (nodeID - 1 + numNodes) % numNodes, 0, MPI_COMM_WORLD, &status);
+
+			for (j = 0; j < d3; j++)
+				for (k = 0; k < d2; k++)
+					C[i][j] += A[i][k] * B[k][j];
+		}
+
+		MPI_Finalize();
+
+		end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+		printf("\nTime Taken in Milliseconds: %lld\n", end.count() - start.count());
+	}
 
 	/* test output */
-	print_mat(A, d1, d2, "A");
-	print_mat(B, d2, d3, "B");
-	print_mat(C, d1, d3, "C");
+	//print_mat(A, d1, d2, "A");
+	//print_mat(B, d2, d3, "B");
+	//print_mat(C, d1, d3, "C");
 
 	printf("\nDone.\n");
 
