@@ -5,7 +5,22 @@
 
 #include <chrono>
 
-//#define GET_TIME std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+//Uncomment printmat and use low matrix values (multiple of task count) to compare matrix results, seemed accurate
+
+//Approximate Time Taken with 4 Tasks:
+//Serial: 17.455s
+//Send / Receive: 6.449s
+//Collective: 5.357s
+
+//Approximate Time Taken with 2 Tasks:
+//Serial: 17.455s
+//Send / Receive: 17.985s
+//Collective: 9.135s
+
+//Approximate Time Taken with 1 Tasks:
+//Serial: 17.455s
+//Send / Receive: 17.985s
+//Collective: 18.131s
 
 // ---------------------------------------------------------------------------
 // allocate space for empty matrix A[row][col]
@@ -201,36 +216,72 @@ int main(int argc, char* argv[])
 		printf("\nParallel Send / Receive Total Time Taken in Milliseconds: %lld\n\n\n", end.count() - start.count());
 	}
 
-	//parallel scatter version
-	//{
-	//	float** sendBuf = alloc_mat(d1 / (numNodes - 1), d3);
-	//	float* recvBuf = (float*)calloc(d1, sizeof(float*));
+	//parallel collective version
+	{
+		std::chrono::milliseconds start, end;
 
-	//	MPI_Scatter(sendBuf, d1, MPI_FLOAT, recvBuf, d1, MPI_FLOAT, 0, MPI_COMM_WORLD);
-	//	
-	//	if(0 != nodeID)
-	//	{
-	//		std::chrono::milliseconds start, end;
+		start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 
-	//		start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+		for (k = 0; k < d2; k++) MPI_Bcast(B[k], d3, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-	//		printf("Node %d: performing parallel matrix multiplication...\n", nodeID);
-	//		//for (i = d1 * nodeID / numNodes; i < (d1 * (nodeID + 1) / numNodes); i++)
-	//		for (i = 0; i < d1 / (numNodes - 1); ++i)
-	//		{
-	//			//printf("%d ", i);
+		float** C = alloc_mat(d1, d3);
 
-	//			for (j = 0; j < d3; j++)
-	//				for (k = 0; k < d2; k++)
-	//					C[i][j] += A[i][k] * B[k][j];
-	//		}
+		float** rowsA = alloc_mat(d1 / numNodes, d2);
+		float** rowsC = alloc_mat(d1 / numNodes, d3);
 
-	//		end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+		{
+			std::chrono::milliseconds start, end;
 
-	//		printf("\nParallel Scatter Time Taken in Milliseconds: %lld\n\n\n", end.count() - start.count());
-	//	}
-	//	MPI_Gather(recvBuf, d1, MPI_FLOAT, sendBuf, d1, MPI_FLOAT, 0, MPI_COMM_WORLD);
-	//}
+			start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+			for (i = 0; i < d1 / numNodes; ++i)
+				MPI_Scatter(A[i], d2, MPI_FLOAT, rowsA[i], d2, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+			end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+			printf("\nParallel Collective Time Taken To Scatter in Milliseconds: %lld\n", end.count() - start.count());
+		}
+
+		{
+			std::chrono::milliseconds start, end;
+
+			start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+			for (i = 0; i < d1 / numNodes; ++i)
+				for (j = 0; j < d3; j++)
+					for (k = 0; k < d2; k++)
+						rowsC[i][j] += rowsA[i][k] * B[k][j];
+
+			end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+			printf("\nParallel Collective Time Taken To Calculate in Milliseconds: %lld\n", end.count() - start.count());
+		}
+
+		
+		{
+			std::chrono::milliseconds start, end;
+
+			start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+			for (i = 0; i < d1 / numNodes; ++i)
+				MPI_Gather(rowsC[i], d3, MPI_FLOAT, C[i], d3, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+			end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+			printf("\nParallel Collective Time Taken To Gather in Milliseconds: %lld\n", end.count() - start.count());
+		}
+
+		if (0 == nodeID)
+		{
+			/*print_mat(A, d1, d2, "A");
+			print_mat(B, d2, d3, "B");
+			print_mat(C, d1, d3, "C");*/
+		}
+
+		end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
+		printf("\nParallel Collective Total Time Taken: %lld\n", end.count() - start.count());
+	}
 
 	/* serial version of matmult */
 	if (0 == nodeID)
